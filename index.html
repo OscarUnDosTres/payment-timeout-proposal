@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UnDosTres · Flujo final de pago con timeout</title>
+<style>
+  @font-face { font-family: "Lato"; src: url("assets/fonts/Lato-Regular.ttf"); font-weight: 400; }
+  @font-face { font-family: "Lato"; src: url("assets/fonts/Lato-Semibold.ttf"); font-weight: 600; }
+  @font-face { font-family: "Lato"; src: url("assets/fonts/Lato-Bold.ttf"); font-weight: 700; }
+  @font-face { font-family: "Lato"; src: url("assets/fonts/Lato-Heavy.ttf"); font-weight: 800; }
+  @font-face { font-family: "Lato"; src: url("assets/fonts/Lato-Black.ttf"); font-weight: 900; }
+
+  :root {
+    --blueTrust: #009FDD;
+    --blueTrust85: #B3EDFF;
+    --blueTrust93: #DBF7FF;
+    --blueTrust95: #E5F9FF;
+    --blueTrust98: #F5FCFF;
+    --blueTechnology: #0B1E3E;
+    --gray10: #16191D;
+    --gray30: #434A56;
+    --gray50: #707B8F;
+    --gray60: #8D96A5;
+    --gray70: #A9B0BC;
+    --gray90: #E3E5E9;
+    --gray95: #F1F2F4;
+    --white100: #FFFFFF;
+    --alert: #DA7807;
+    --alertBanner: #FFF9D6;
+    --success: #036600;
+    --backgroundGreen: #DEFFED;
+    --error: #AA241D;
+    --backgroundRed: #F8E8E8;
+    --barrier: rgba(30, 62, 102, .40);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Lato", -apple-system, sans-serif; color: var(--gray10); background: var(--gray95); -webkit-font-smoothing: antialiased; }
+
+  /* ---------- Página ---------- */
+  .page { max-width: 1680px; margin: 0 auto; padding: 40px 32px 64px; }
+  .page-header { max-width: 920px; margin-bottom: 28px; }
+  .eyebrow { font-size: 12px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--blueTrust); }
+  .page-header h1 { font-size: 32px; line-height: 1.25; font-weight: 900; color: var(--blueTechnology); margin: 8px 0 12px; }
+  .page-header p { font-size: 16px; line-height: 1.5; color: var(--gray30); }
+
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
+  .flow .step { background: var(--white100); border: 1px solid var(--gray90); border-radius: 100px; padding: 6px 12px; font-size: 13px; font-weight: 700; color: var(--gray30); }
+  .flow .step b { color: var(--blueTrust); margin-right: 4px; }
+  .flow .arrow { color: var(--gray70); font-weight: 800; }
+
+  .board { display: grid; grid-template-columns: repeat(4, minmax(360px, 1fr)); gap: 28px; align-items: start; }
+  @media (max-width: 1560px) { .board { grid-template-columns: repeat(2, minmax(360px, 1fr)); } }
+  @media (max-width: 800px)  { .board { grid-template-columns: 1fr; } }
+
+  .column { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .column-title { width: 360px; }
+  .column-title .tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: var(--blueTrust); color: var(--white100); }
+  .column-title .tag.ok { background: var(--success); }
+  .column-title .tag.ko { background: var(--error); }
+  .column-title h2 { font-size: 20px; font-weight: 800; color: var(--blueTechnology); margin-top: 8px; }
+  .column-title p { font-size: 14px; color: var(--gray50); margin-top: 2px; }
+
+  /* ---------- Teléfono ---------- */
+  .phone { width: 360px; height: 760px; border-radius: 40px; background: var(--gray10); padding: 10px; box-shadow: 0 24px 48px rgba(11,30,62,.18); position: relative; flex-shrink: 0; }
+  .screen { width: 100%; height: 100%; border-radius: 31px; overflow: hidden; background: var(--white100); display: flex; flex-direction: column; position: relative; }
+  .statusbar { height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; font-size: 13px; font-weight: 700; color: var(--gray10); }
+  .statusbar .icons { display: flex; gap: 5px; align-items: center; }
+  .statusbar .notch { width: 90px; height: 22px; border-radius: 12px; background: var(--gray10); }
+  .home-indicator { position: absolute; bottom: 0; left: 0; right: 0; height: 20px; display: flex; justify-content: center; align-items: center; z-index: 20; }
+  .home-indicator::after { content: ""; width: 120px; height: 4px; border-radius: 4px; background: var(--gray10); opacity: .85; }
+
+  /* ---------- Componentes UDT ---------- */
+  .btn-primary { display: flex; align-items: center; justify-content: center; width: 100%; height: 56px; border: none; border-radius: 4px; background: var(--blueTrust); color: var(--white100); font: 800 20px/1 "Lato"; letter-spacing: .5px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+  .btn-text { display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; border: none; background: none; color: var(--blueTrust); font: 800 16px/1 "Lato"; letter-spacing: .5px; cursor: pointer; }
+  .h-l { font-size: 24px; line-height: 1.34; font-weight: 800; color: var(--blueTechnology); }
+  .body-m { font-size: 14px; line-height: 1.42; color: var(--gray30); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-3px); opacity: 1; } }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* ---------- 1. Vista de timeout ---------- */
+  .v-timeout { flex: 1; display: flex; flex-direction: column; padding: 8px 18px 28px; }
+  .v-timeout .hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 16px; }
+  .ring { width: 172px; height: 172px; border-radius: 50%; position: relative; display: flex; align-items: center; justify-content: center; background: var(--blueTrust98); }
+  .ring::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 4px solid var(--blueTrust93); border-top-color: var(--blueTrust); animation: spin 1.6s linear infinite; }
+  .ring img { width: 104px; }
+  .checking { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; font-weight: 800; color: var(--blueTrust); background: var(--blueTrust95); padding: 5px 12px; border-radius: 100px; }
+  .dots span { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--blueTrust); margin: 0 1px; animation: bounce 1.2s infinite; }
+  .dots span:nth-child(2) { animation-delay: .15s; }
+  .dots span:nth-child(3) { animation-delay: .3s; }
+  .v-timeout .hero h3 { margin-top: 16px; }
+  .v-timeout .hero p { margin-top: 8px; }
+  .info-card { margin-top: 22px; border: 1px solid var(--blueTrust85); background: var(--blueTrust98); border-radius: 8px; padding: 12px; display: flex; gap: 12px; align-items: center; }
+  .info-card .ic { width: 36px; height: 36px; border-radius: 50%; background: var(--blueTrust93); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .info-card .txt { font-size: 13px; line-height: 1.4; color: var(--gray30); }
+  .info-card .txt b { display: block; font-size: 14px; color: var(--gray10); font-weight: 800; }
+  .inline-warn { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.4; color: var(--gray30); }
+  .inline-warn b { color: var(--gray10); }
+  .spacer { flex: 1; min-height: 16px; }
+  .help { display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--gray50); margin-top: 8px; }
+  .help a { color: var(--blueTrust); text-decoration: underline; }
+
+  /* ---------- 2. Home ---------- */
+  .home { flex: 1; display: flex; flex-direction: column; background: var(--white100); overflow: hidden; }
+  .home-top { display: flex; align-items: center; gap: 12px; padding: 6px 16px 10px; }
+  .search { flex: 1; height: 40px; border: 1px solid var(--gray70); border-radius: 20px; display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 14px; color: var(--gray60); }
+  .home-section { padding: 0 16px; }
+  .card-home { border-radius: 10px; border: 1.5px solid var(--white100); background: var(--white100); box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+  .pending-card { border-color: var(--alertBanner); background: var(--alertBanner); padding: 12px; display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+  .pending-card .ic { width: 36px; height: 36px; border-radius: 50%; background: var(--white100); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; }
+  .pending-card .ic::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--alert); animation: spin 1.2s linear infinite; }
+  .pending-card .txt { flex: 1; }
+  .pending-card .title { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 800; color: var(--gray10); }
+  .pending-card .title .chev { color: var(--gray50); }
+  .pending-card .desc { font-size: 13px; line-height: 1.4; color: var(--gray30); margin-top: 2px; }
+  .pending-card .meta { font-size: 12px; font-weight: 700; color: var(--alert); margin-top: 6px; }
+  .reminder { margin-top: 12px; padding: 12px; display: flex; align-items: center; gap: 10px; }
+  .reminder .logo { width: 36px; height: 36px; border-radius: 8px; background: #E10A0A; color: #fff; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  .reminder .txt { flex: 1; font-size: 13px; color: var(--gray30); }
+  .reminder .txt b { display: block; color: var(--gray10); font-size: 14px; }
+  .reminder .pay { font-size: 13px; font-weight: 800; color: var(--blueTrust); }
+  .section-title { font-size: 16px; font-weight: 800; color: var(--blueTechnology); margin: 18px 0 10px; }
+  .products { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 8px; }
+  .product { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--gray30); text-align: center; }
+  .product .pi { width: 56px; height: 56px; border-radius: 14px; background: var(--blueTrust95); display: flex; align-items: center; justify-content: center; }
+  .banner { margin-top: 18px; height: 110px; border-radius: 10px; background: linear-gradient(90deg, #144291, #212A39); color: #fff; padding: 16px; display: flex; flex-direction: column; justify-content: center; }
+  .banner b { font-size: 18px; font-weight: 900; }
+  .banner span { font-size: 13px; opacity: .85; margin-top: 4px; }
+  .navbar { margin-top: auto; height: 64px; border-top: 1px solid var(--gray90); display: flex; justify-content: space-around; align-items: center; padding-bottom: 12px; background: var(--white100); }
+  .navbar div { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; font-weight: 700; color: var(--gray60); }
+  .navbar div.active { color: var(--blueTrust); }
+
+  /* Pantalla genérica (para mostrar que el sheet aparece en cualquier lugar) */
+  .appbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px 12px; font-size: 18px; font-weight: 800; color: var(--blueTechnology); border-bottom: 1px solid var(--gray90); }
+  .generic { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .ghost { height: 56px; border-radius: 8px; background: var(--gray95); }
+  .ghost.s { height: 20px; width: 60%; }
+
+  /* ---------- Bottom sheet ---------- */
+  .barrier { position: absolute; inset: 0; background: var(--barrier); z-index: 10; transition: opacity .3s; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 11; background: var(--white100); border-radius: 16px 16px 0 0; padding: 8px 18px 30px; box-shadow: 0 -4px 16px rgba(173,173,173,.2); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+  .sheet .handle { width: 40px; height: 4px; border-radius: 4px; background: var(--gray90); margin: 0 auto 8px; }
+  .sheet .close { position: absolute; top: 14px; right: 14px; }
+  .sheet .center { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 14px; }
+  .sheet .state-ic { width: 88px; height: 88px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+  .sheet .ok { background: var(--backgroundGreen); }
+  .sheet .ko { background: var(--backgroundRed); }
+  .sheet h3.okt { color: var(--success); }
+  .sheet h3.kot { color: var(--error); }
+  .sheet p { margin-top: 6px; }
+  .sheet .summary { width: 100%; margin: 16px 0 18px; border: 1px solid var(--gray90); border-radius: 8px; padding: 2px 14px; text-align: left; }
+  .sheet .item { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--gray90); font-size: 14px; }
+  .sheet .item:last-child { border-bottom: none; }
+  .sheet .item .label { color: var(--gray50); }
+  .sheet .item .value { font-weight: 700; color: var(--gray10); }
+  .sheet .actions { width: 100%; display: flex; flex-direction: column; gap: 2px; }
+
+  /* Demo interactiva */
+  .demo { width: 360px; display: flex; gap: 8px; }
+  .demo button { flex: 1; height: 40px; border-radius: 4px; background: var(--white100); font: 700 13px "Lato"; cursor: pointer; }
+  .demo .d-ok { border: 1px dashed var(--success); color: var(--success); }
+  .demo .d-ko { border: 1px dashed var(--error); color: var(--error); }
+  .demo .d-reset { border: 1px dashed var(--gray50); color: var(--gray50); flex: .6; }
+  .hidden-sheet .barrier { opacity: 0; pointer-events: none; }
+  .hidden-sheet .sheet { transform: translateY(110%); }
+
+  /* ---------- Notas ---------- */
+  .notes { width: 360px; background: var(--white100); border-radius: 12px; padding: 18px; border: 1px solid var(--gray90); }
+  .notes h4 { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .8px; color: var(--gray50); margin: 14px 0 6px; }
+  .notes h4:first-child { margin-top: 0; }
+  .notes p, .notes li { font-size: 14px; line-height: 1.45; color: var(--gray30); }
+  .notes ul { padding-left: 18px; }
+  .notes li + li { margin-top: 4px; }
+
+  .footer-notes { margin-top: 48px; max-width: 1100px; background: var(--white100); border: 1px solid var(--gray90); border-radius: 12px; padding: 24px 28px; }
+  .footer-notes h3 { font-size: 18px; font-weight: 800; color: var(--blueTechnology); margin-bottom: 10px; }
+  .footer-notes li { font-size: 14px; line-height: 1.5; color: var(--gray30); margin-left: 18px; }
+  .footer-notes li + li { margin-top: 6px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; background: var(--gray95); padding: 1px 5px; border-radius: 4px; color: var(--blueTechnology); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="page-header">
+    <div class="eyebrow">App · Payments · Flujo final de pago con timeout</div>
+    <h1>Tu pago está tardando más de lo habitual</h1>
+    <p>Cuando el backend no confirma el pago a tiempo, en lugar de la vista de error mostramos que el pago sigue en proceso. El usuario puede quedarse o salir. Si sale, el home le recuerda que hay un pago en proceso, y cuando llega el resultado por websocket le mostramos un bottom sheet en la pantalla donde esté, tanto si el pago se completó como si falló.</p>
+    <div class="flow">
+      <span class="step"><b>1</b>Timeout del pago</span><span class="arrow">→</span>
+      <span class="step"><b>2</b>Sale a home: card "Pago en proceso"</span><span class="arrow">→</span>
+      <span class="step"><b>3</b>Websocket: pago completado</span>
+      <span class="arrow">/</span>
+      <span class="step"><b>4</b>Websocket: pago no completado</span>
+    </div>
+  </header>
+
+  <div class="board">
+
+    <!-- ============ 1. TIMEOUT ============ -->
+    <section class="column">
+      <div class="column-title">
+        <span class="tag">Paso 1</span>
+        <h2>Vista de timeout</h2>
+        <p>Cuando el pago no se confirma a tiempo</p>
+      </div>
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><span>9:41</span><span class="notch"></span><span class="icons">●●● ▮</span></div>
+        <div class="v-timeout">
+          <div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--gray50)"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+          </div>
+          <div class="hero">
+            <div class="ring"><img src="assets/report_sent.svg" alt=""></div>
+            <span class="checking">Verificando tu pago <span class="dots"><span></span><span></span><span></span></span></span>
+            <h3 class="h-l">Tu pago está tardando más de lo habitual</h3>
+            <p class="body-m">Ya estamos trabajando en ello. Puedes quedarte aquí o salir: el resultado te llegará igual.</p>
+          </div>
+
+          <div class="info-card">
+            <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--blueTrust)"><path d="M12 22c1.1 0 2-.9 2-2h-4a2 2 0 0 0 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg></span>
+            <span class="txt"><b>Te avisaremos en cuanto se confirme</b>Verás el resultado en la app, aunque salgas de esta pantalla.</span>
+          </div>
+
+          <div class="inline-warn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--alert)" style="flex-shrink:0"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+            <span><b>No vuelvas a pagar</b> para evitar un cobro doble.</span>
+          </div>
+
+          <div class="spacer"></div>
+          <button class="btn-primary">Ir al inicio</button>
+          <div class="help">¿Dudas? <a>Escríbenos por WhatsApp</a></div>
+        </div>
+        <div class="home-indicator"></div>
+      </div></div>
+      <div class="notes">
+        <h4>Comportamiento</h4>
+        <ul>
+          <li>Se muestra cuando el pago no se confirma a tiempo, en vez de "Oops..! Algo salió mal".</li>
+          <li>Sin switch de notificaciones: el aviso es informativo, el resultado siempre llega.</li>
+          <li>Sin "Intentar de nuevo": solo salir al inicio.</li>
+          <li>Si el resultado llega mientras sigue en esta vista, se muestra el mismo bottom sheet de los pasos 3 y 4.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ 2. HOME ============ -->
+    <section class="column">
+      <div class="column-title">
+        <span class="tag">Paso 2</span>
+        <h2>Home con pago en proceso</h2>
+        <p>Card arriba del home mientras no llega el resultado</p>
+      </div>
+      <div class="phone"><div class="screen hidden-sheet" id="demoScreen">
+        <div class="statusbar"><span>9:41</span><span class="notch"></span><span class="icons">●●● ▮</span></div>
+        <div class="home">
+          <div class="home-top">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--gray10)"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+            <div class="search">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--gray60)"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+              Buscar recargas, servicios…
+            </div>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--gray10)"><path d="M12 22c1.1 0 2-.9 2-2h-4a2 2 0 0 0 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+          </div>
+
+          <div class="home-section">
+            <div class="card-home pending-card" id="pendingCard">
+              <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--alert)"><path d="M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6zm10 14.5V20H8v-3.5l4-4 4 4zm-4-5-4-4V4h8v3.5l-4 4z"/></svg></span>
+              <span class="txt">
+                <span class="title">Pago en proceso <span class="chev">›</span></span>
+                <span class="desc" style="display:block">Está tardando más de lo habitual, pero ya estamos trabajando en ello.</span>
+                <span class="meta" style="display:block">Recarga Telcel $100 · 55 1234 5678</span>
+              </span>
+            </div>
+
+            <div class="card-home reminder">
+              <span class="logo">CFE</span>
+              <span class="txt"><b>Tu recibo de luz vence pronto</b>Paga antes del 28 de octubre</span>
+              <span class="pay">Pagar</span>
+            </div>
+
+            <div class="section-title">¿Qué quieres pagar hoy?</div>
+            <div class="products">
+              <div class="product"><span class="pi"><svg width="26" height="26" viewBox="0 0 24 24" fill="var(--blueTrust)"><path d="M17 1H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm0 18H7V5h10v14z"/></svg></span>Recargas</div>
+              <div class="product"><span class="pi"><svg width="26" height="26" viewBox="0 0 24 24" fill="var(--blueTrust)"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg></span>Luz</div>
+              <div class="product"><span class="pi"><svg width="26" height="26" viewBox="0 0 24 24" fill="var(--blueTrust)"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2c0-3.32-2.67-7.25-8-11.8z"/></svg></span>Agua</div>
+              <div class="product"><span class="pi"><svg width="26" height="26" viewBox="0 0 24 24" fill="var(--blueTrust)"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg></span>Tarjetas</div>
+            </div>
+            <div class="banner"><b>Gana cashback</b><span>En tus pagos de servicios este mes</span></div>
+          </div>
+
+          <div class="navbar">
+            <div class="active"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--blueTrust)"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>Inicio</div>
+            <div><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--gray60)"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>Compras</div>
+            <div><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--gray60)"><path d="M21 18v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1h-9a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9zm-9-2h10V8H12v8zm4-2.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>Wallet</div>
+            <div><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--gray60)"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Perfil</div>
+          </div>
+        </div>
+
+        <!-- Sheet de la demo -->
+        <div class="barrier"></div>
+        <div class="sheet" id="demoSheet"></div>
+        <div class="home-indicator"></div>
+      </div></div>
+      <div class="demo">
+        <button class="d-ok" data-r="ok">▶ Websocket: éxito</button>
+        <button class="d-ko" data-r="ko">▶ Websocket: fallo</button>
+        <button class="d-reset" data-r="reset">↺</button>
+      </div>
+      <div class="notes">
+        <h4>Comportamiento</h4>
+        <ul>
+          <li>Card en la parte de arriba del home, en la misma zona de avisos y con el mismo estilo de card.</li>
+          <li>Título "Pago en proceso" y texto "Está tardando más de lo habitual, pero ya estamos trabajando en ello.", con el producto y la referencia para identificar la compra.</li>
+          <li>Al tocarla abre el historial de compras.</li>
+          <li>Desaparece cuando llega el resultado.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ 3. ÉXITO ============ -->
+    <section class="column">
+      <div class="column-title">
+        <span class="tag ok">Paso 3 · Éxito</span>
+        <h2>Bottom sheet: pago completado</h2>
+        <p>Llega por websocket, en la pantalla donde esté</p>
+      </div>
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><span>9:41</span><span class="notch"></span><span class="icons">●●● ▮</span></div>
+        <div class="home">
+          <div class="home-top">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--gray10)"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+            <div class="search">Buscar recargas, servicios…</div>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--gray10)"><path d="M12 22c1.1 0 2-.9 2-2h-4a2 2 0 0 0 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+          </div>
+          <div class="home-section">
+            <div class="section-title">¿Qué quieres pagar hoy?</div>
+            <div class="products">
+              <div class="product"><span class="pi"></span>Recargas</div><div class="product"><span class="pi"></span>Luz</div>
+              <div class="product"><span class="pi"></span>Agua</div><div class="product"><span class="pi"></span>Tarjetas</div>
+            </div>
+          </div>
+        </div>
+        <div class="barrier"></div>
+        <div class="sheet" data-sheet="ok"></div>
+        <div class="home-indicator"></div>
+      </div></div>
+      <div class="notes">
+        <h4>Comportamiento</h4>
+        <ul>
+          <li>Se abre encima de la pantalla en la que esté el usuario: home, otra compra, perfil, etc.</li>
+          <li>Mismo mensaje que la confirmación de éxito: "¡Listo! Tu pago se completó".</li>
+          <li>"Ver mi compra" abre la confirmación o el detalle de la transacción.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ 4. FALLO ============ -->
+    <section class="column">
+      <div class="column-title">
+        <span class="tag ko">Paso 4 · Fallo</span>
+        <h2>Bottom sheet: pago no completado</h2>
+        <p>Ejemplo sobre otra pantalla de la app</p>
+      </div>
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><span>9:41</span><span class="notch"></span><span class="icons">●●● ▮</span></div>
+        <div class="appbar">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--blueTechnology)"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          Mis compras
+        </div>
+        <div class="generic">
+          <div class="ghost s"></div><div class="ghost"></div><div class="ghost"></div><div class="ghost"></div><div class="ghost"></div>
+        </div>
+        <div class="barrier"></div>
+        <div class="sheet" data-sheet="ko"></div>
+        <div class="home-indicator"></div>
+      </div></div>
+      <div class="notes">
+        <h4>Comportamiento</h4>
+        <ul>
+          <li>Mismo componente que el de éxito, con el color y el ícono de fallo de la confirmación.</li>
+          <li>Aquí sí se ofrece "Intentar de nuevo", porque ya sabemos que el pago no se completó.</li>
+          <li>Si conocemos el motivo del fallo, se muestra en lugar del texto genérico.</li>
+        </ul>
+      </div>
+    </section>
+
+  </div>
+
+
+</div>
+
+<template id="sheet-ok">
+  <div class="handle"></div>
+  <svg class="close" width="22" height="22" viewBox="0 0 24 24" fill="var(--gray30)"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+  <div class="center">
+    <div class="state-ic ok"><svg width="48" height="48" viewBox="0 0 24 24" fill="var(--success)"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+    <h3 class="h-l okt">¡Listo! Tu pago se completó</h3>
+    <p class="body-m">Tu recarga ya está aplicada.</p>
+    <div class="summary">
+      <div class="item"><span class="label">Recarga</span><span class="value">Telcel $100</span></div>
+      <div class="item"><span class="label">Número</span><span class="value">55 1234 5678</span></div>
+      <div class="item"><span class="label">Pagaste con</span><span class="value">Tarjeta •••• 4242</span></div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary">Ver mi compra</button>
+      <button class="btn-text">Cerrar</button>
+    </div>
+  </div>
+</template>
+
+<template id="sheet-ko">
+  <div class="handle"></div>
+  <svg class="close" width="22" height="22" viewBox="0 0 24 24" fill="var(--gray30)"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+  <div class="center">
+    <div class="state-ic ko"><span style="font-size:44px;font-weight:600;color:var(--error);line-height:1">!</span></div>
+    <h3 class="h-l kot">Tu pago no se completó</h3>
+    <p class="body-m">No pudimos confirmar tu pago con el proveedor. Ya puedes intentarlo de nuevo.</p>
+    <div class="summary">
+      <div class="item"><span class="label">Recarga</span><span class="value">Telcel $100</span></div>
+      <div class="item"><span class="label">Número</span><span class="value">55 1234 5678</span></div>
+      <div class="item"><span class="label">Pagaste con</span><span class="value">Tarjeta •••• 4242</span></div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary">Intentar de nuevo</button>
+      <button class="btn-text">Ver detalle</button>
+    </div>
+  </div>
+</template>
+
+<script>
+  document.querySelectorAll('[data-sheet]').forEach(el => {
+    el.innerHTML = document.getElementById('sheet-' + el.dataset.sheet).innerHTML;
+  });
+
+  const screen = document.getElementById('demoScreen');
+  const demoSheet = document.getElementById('demoSheet');
+  const pendingCard = document.getElementById('pendingCard');
+  document.querySelectorAll('.demo button').forEach(b => b.addEventListener('click', () => {
+    const r = b.dataset.r;
+    if (r === 'reset') {
+      screen.classList.add('hidden-sheet');
+      pendingCard.style.display = '';
+      return;
+    }
+    demoSheet.innerHTML = document.getElementById('sheet-' + r).innerHTML;
+    screen.classList.remove('hidden-sheet');
+    pendingCard.style.display = 'none';
+  }));
+</script>
+</body>
+</html>
